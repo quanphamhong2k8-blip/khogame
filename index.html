@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>BowMasters Multiplayer</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#111; display:flex; align-items:center; justify-content:center;
+  height:100vh; overflow:hidden; touch-action:none; user-select:none;
+  font-family:'Segoe UI',sans-serif;
+}
+#gameWrapper {
+  position:relative; width:360px; height:640px;
+  overflow:hidden; border-radius:12px;
+  box-shadow:0 0 60px rgba(0,0,0,0.8);
+}
+canvas { display:block; position:absolute; top:0; left:0; }
+
+/* HUD */
+#hud {
+  position:absolute; top:0; left:0; right:0;
+  padding:8px 10px 0;
+  display:flex; align-items:center; gap:6px;
+  pointer-events:none; z-index:10;
+}
+.av {
+  width:38px; height:38px; border-radius:8px;
+  border:2px solid rgba(255,255,255,0.3);
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; flex-shrink:0;
+}
+.av.p1 { background:#c0392b; }
+.av.p2 { background:#2980b9; }
+#hpwrap {
+  flex:1; height:22px; background:rgba(0,0,0,0.4);
+  border-radius:11px; overflow:hidden;
+  border:1.5px solid rgba(255,255,255,0.15);
+  display:flex; position:relative;
+}
+#hp1 { height:100%; background:linear-gradient(90deg,#ff4444,#ff9988); transition:width .3s; }
+#hpx {
+  position:absolute; left:50%; top:50%;
+  transform:translate(-50%,-50%);
+  font-weight:900; font-size:13px; color:#fff;
+  text-shadow:0 1px 3px #000; pointer-events:none;
+}
+#hp2 { height:100%; background:linear-gradient(90deg,#88ccff,#44aaff); transition:width .3s; margin-left:auto; }
+
+/* Throw stats */
+#throwStats {
+  position:absolute; display:none;
+  background:rgba(255,255,255,0.93);
+  border-radius:10px; padding:6px 12px;
+  font:700 12px/1.8 sans-serif; color:#333;
+  pointer-events:none; z-index:15;
+  box-shadow:0 2px 10px rgba(0,0,0,0.3);
+}
+#throwStats b { color:#e03333; font-size:14px; }
+
+/* Distance badge */
+#distBadge {
+  position:absolute; display:none;
+  background:rgba(255,255,255,0.93);
+  border-radius:20px; padding:4px 10px;
+  font:800 12px sans-serif; color:#333;
+  pointer-events:none; z-index:15;
+  box-shadow:0 2px 8px rgba(0,0,0,0.2);
+}
+
+/* Turn banner */
+#turnBanner {
+  position:absolute; bottom:4px; left:0; right:0;
+  text-align:center; padding:10px;
+  font:900 22px sans-serif; color:#fff;
+  text-shadow:0 2px 6px rgba(0,0,0,.5);
+  opacity:0; transition:opacity .3s;
+  pointer-events:none; z-index:10;
+}
+#turnBanner.show { opacity:1; }
+
+/* LOBBY OVERLAY */
+#lobbyOverlay {
+  position:absolute; inset:0;
+  background:rgba(10,20,55,0.97);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:12px;
+  z-index:50; padding:20px;
+}
+#lobbyOverlay h1 {
+  font:900 36px sans-serif; color:#fff;
+  letter-spacing:3px; text-shadow:0 0 30px #4af;
+  margin-bottom:4px;
+}
+.lobby-card {
+  background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:14px; padding:14px 18px;
+  width:100%; max-width:290px;
+}
+.lobby-card h3 { color:#ffd23f; font-size:13px; margin-bottom:8px; letter-spacing:1px; }
+.room-code-big {
+  font:900 42px sans-serif; text-align:center;
+  color:#ffd23f; letter-spacing:12px;
+  text-shadow:0 0 20px rgba(255,210,63,0.6);
+  margin:4px 0;
+}
+input[type=tel] {
+  width:100%; background:rgba(255,255,255,0.07);
+  border:1px solid rgba(255,255,255,0.2); border-radius:9px;
+  color:#fff; font:900 26px sans-serif;
+  letter-spacing:8px; text-align:center; padding:8px; outline:none;
+}
+.btn-lobby {
+  width:100%; padding:11px; border:none; border-radius:10px;
+  font:900 16px sans-serif; cursor:pointer; color:#fff;
+  transition:transform .1s, filter .1s; margin-top:6px;
+}
+.btn-lobby:active { transform:scale(0.96); }
+.btn-orange { background:linear-gradient(135deg,#ff6b35,#ff9500); box-shadow:0 3px 12px rgba(255,107,53,.4); }
+.btn-blue   { background:linear-gradient(135deg,#0080ff,#00e5ff); box-shadow:0 3px 12px rgba(0,200,255,.3); }
+.btn-gray   { background:rgba(255,255,255,0.1); }
+.status-dot {
+  display:inline-block; width:8px; height:8px;
+  border-radius:50%; margin-right:5px;
+}
+.dot-wait { background:#ffaa00; }
+.dot-ok   { background:#00ff88; }
+.status-text { font-size:12px; color:rgba(255,255,255,0.6); margin-top:6px; }
+
+/* GAME OVERLAY (waiting / result) */
+#gameOverlay {
+  position:absolute; inset:0;
+  background:rgba(10,20,55,0.93);
+  display:none; flex-direction:column;
+  align-items:center; justify-content:center; gap:14px;
+  z-index:30;
+}
+#gameOverlay h1 { font:900 40px sans-serif; color:#fff; letter-spacing:3px; text-shadow:0 0 30px #4af; }
+#gameOverlay p  { color:#aac; font-size:14px; text-align:center; max-width:280px; line-height:1.7; }
+#gameOverlay button {
+  font:900 18px sans-serif; padding:11px 36px;
+  background:linear-gradient(135deg,#ff6b35,#f7c59f);
+  color:#fff; border:none; border-radius:30px;
+  cursor:pointer; box-shadow:0 4px 20px rgba(255,100,50,.5);
+  transition:transform .1s;
+}
+#gameOverlay button:active { transform:scale(0.95); }
+
+/* Opponent thinking indicator */
+#oppThinking {
+  position:absolute; bottom:160px; left:0; right:0;
+  text-align:center; font:700 13px sans-serif;
+  color:rgba(255,255,255,0.5); display:none; z-index:10;
+}
+
+/* toast */
+.toast {
+  position:fixed; bottom:1.5rem; left:50%;
+  transform:translateX(-50%) translateY(80px);
+  background:#222; border:1px solid rgba(255,255,255,0.15);
+  color:#fff; padding:6px 18px; border-radius:100px;
+  font-size:13px; transition:transform 0.3s; z-index:999;
+  white-space:nowrap; pointer-events:none;
+}
+.toast.show { transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div id="gameWrapper">
+  <canvas id="c" width="360" height="640"></canvas>
+
+  <div id="hud">
+    <div class="av p1">🧑</div>
+    <div id="hpwrap">
+      <div id="hp1" style="width:50%"></div>
+      <div id="hpx">✕</div>
+      <div id="hp2" style="width:50%"></div>
+    </div>
+    <div class="av p2">🧑</div>
+  </div>
+
+  <div id="throwStats">
+    <b id="tsf">0%</b> Force &nbsp; <b id="tsa">0°</b> Angle
+  </div>
+  <div id="distBadge">0m</div>
+  <div id="turnBanner"></div>
+  <div id="oppThinking">⏳ Đối thủ đang nhắm...</div>
+
+  <!-- LOBBY -->
+  <div id="lobbyOverlay">
+    <h1>🏹 BOWMASTERS</h1>
+    <div class="lobby-card">
+      <h3>🏠 TẠO PHÒNG</h3>
+      <button class="btn-lobby btn-orange" onclick="createRoom()">TẠO PHÒNG MỚI</button>
+      <div id="createArea" style="display:none">
+        <div class="room-code-big" id="myRoomCode">—</div>
+        <div class="status-text"><span class="status-dot dot-wait"></span><span id="createStatus">Đang chờ đối thủ...</span></div>
+      </div>
+    </div>
+    <div class="lobby-card">
+      <h3>🔗 THAM GIA</h3>
+      <input type="tel" id="joinInput" placeholder="0000" maxlength="4" inputmode="numeric">
+      <button class="btn-lobby btn-blue" onclick="joinRoom()">THAM GIA</button>
+      <div class="status-text" id="joinStatus" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- GAME OVERLAY (result / waiting) -->
+  <div id="gameOverlay">
+    <h1 id="goTitle">THẮNG!</h1>
+    <p  id="goSub">Bạn đã chiến thắng!</p>
+    <button id="goBtn">CHƠI LẠI</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ══════════════════════════════════════════
+     FIREBASE
+══════════════════════════════════════════ -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, set, get, update, onValue, remove }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const FB = {
+  apiKey:            "AIzaSyDmohiL5dbxaidgsMMTCWIsNIPGsKNq7rE",
+  authDomain:        "solo-fnf.firebaseapp.com",
+  databaseURL:       "https://solo-fnf-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "solo-fnf",
+  storageBucket:     "solo-fnf.firebasestorage.app",
+  messagingSenderId: "205927464374",
+  appId:             "1:205927464374:web:ea00ed55f3f568431a1517",
+};
+const app = initializeApp(FB);
+const db  = getDatabase(app);
+const DB_ROOT = "bowmasters";
+
+// ══════════════════════════
+//  GLOBALS
+// ══════════════════════════
+let roomId = null, myRole = null; // 'p1' | 'p2'
+let gameRunning = false;
+let shotListener = null;
+
+// ══════════════════════════
+//  UTILS
+// ══════════════════════════
+function uid()  { return Math.floor(1000+Math.random()*9000).toString(); }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function showToast(msg,dur=2500){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),dur);
+}
+
+// ══════════════════════════
+//  LOBBY — CREATE
+// ══════════════════════════
+window.createRoom = async function(){
+  roomId=uid(); myRole='p1';
+  document.getElementById('myRoomCode').textContent=roomId;
+  document.getElementById('createArea').style.display='block';
+  try {
+    await set(ref(db,`${DB_ROOT}/${roomId}`),{
+      phase:'waiting',
+      turn:'p1',
+      p1:{hp:100}, p2:{hp:100},
+      shotId:0,
+    });
+    showToast('✅ Phòng '+roomId+' đã tạo!');
+    listenForOpponent();
+  } catch(e){ showToast('❌ Lỗi Firebase'); console.error(e); }
+};
+
+function listenForOpponent(){
+  onValue(ref(db,`${DB_ROOT}/${roomId}/phase`), snap=>{
+    const ph=snap.val();
+    if(ph==='prep') {
+      document.getElementById('createStatus').textContent='✅ Đối thủ đã vào!';
+      startGame();
+    }
+  });
+}
+
+// ══════════════════════════
+//  LOBBY — JOIN
+// ══════════════════════════
+window.joinRoom = async function(){
+  const code=document.getElementById('joinInput').value.trim();
+  if(code.length!==4){ showToast('⚠️ Nhập mã 4 số!'); return; }
+  roomId=code; myRole='p2';
+  const js=document.getElementById('joinStatus');
+  js.style.display='block'; js.textContent='⏳ Đang kết nối...';
+  try {
+    const snap=await get(ref(db,`${DB_ROOT}/${roomId}`));
+    if(!snap.exists()){ js.textContent='❌ Không tìm thấy phòng!'; return; }
+    if(snap.val().phase!=='waiting'){ js.textContent='❌ Phòng đã bắt đầu!'; return; }
+    await update(ref(db,`${DB_ROOT}/${roomId}`),{phase:'prep'});
+    js.textContent='✅ Đã vào phòng!';
+    startGame();
+  } catch(e){ js.textContent='❌ Lỗi: '+e.message; }
+};
+
+// ══════════════════════════════════════════════════════════
+//  GAME ENGINE (canvas-based, same as original)
+// ══════════════════════════════════════════════════════════
+const CW=360, CH=640;
+const cv=document.getElementById('c');
+const ctx=cv.getContext('2d');
+
+const WW=1100;
+const GROUND_BASE=490;
+const GND=[
+  {x:0,   y:GROUND_BASE},
+  {x:120, y:GROUND_BASE-55},
+  {x:230, y:GROUND_BASE-20},
+  {x:340, y:GROUND_BASE-80},
+  {x:450, y:GROUND_BASE},
+  {x:570, y:GROUND_BASE-45},
+  {x:700, y:GROUND_BASE-90},
+  {x:850, y:GROUND_BASE-30},
+  {x:WW,  y:GROUND_BASE-10},
+];
+function groundY(wx){
+  if(wx<=GND[0].x) return GND[0].y;
+  if(wx>=GND[GND.length-1].x) return GND[GND.length-1].y;
+  for(let i=0;i<GND.length-1;i++){
+    const a=GND[i],b=GND[i+1];
+    if(wx>=a.x&&wx<=b.x){ const t=(wx-a.x)/(b.x-a.x); return a.y+(b.y-a.y)*t; }
+  }
+  return GROUND_BASE;
+}
+
+// ── Camera ──
+const CAM={
+  cx:WW/2, cy:GROUND_BASE-200,
+  tcx:WW/2,tcy:GROUND_BASE-200,
+  z:1,tz:1, shake:0, lerpSpeed:0.1,
+  update(){
+    const ls=this.lerpSpeed;
+    this.cx+=(this.tcx-this.cx)*ls;
+    this.cy+=(this.tcy-this.cy)*ls;
+    this.z +=(this.tz -this.z )*ls;
+    if(this.shake>0) this.shake*=0.75;
+  },
+  ws(wx,wy){
+    const sx=(wx-this.cx)*this.z+CW/2+(this.shake?(Math.random()-.5)*this.shake:0);
+    const sy=(wy-this.cy)*this.z+CH/2+(this.shake?(Math.random()-.5)*this.shake:0);
+    return{x:sx,y:sy};
+  },
+  sw(sx,sy){ return{x:(sx-CW/2)/this.z+this.cx,y:(sy-CH/2)/this.z+this.cy}; },
+  focus(wx,wy,z,spd){ this.tcx=wx;this.tcy=wy;this.tz=z;if(spd)this.lerpSpeed=spd; },
+  focusBoth(){
+    const p0=players[0],p1=players[1];
+    const mx=(p0.wx+p1.wx)/2, my=(p0.wy+p1.wy)/2-100;
+    const dist=Math.abs(p1.wx-p0.wx);
+    const zx=CW/(dist+280);
+    const z=Math.min(1.0,Math.max(0.28,zx));
+    this.focus(mx,my,z,0.07);
+  },
+  focusShooter(p){ this.focus(p.wx,p.wy-60,1.4,0.08); },
+  focusProj(wx,wy){ this.focus(wx,wy-30,1.15,0.12); },
+};
+
+// ── Players ──
+let players=[];
+function makePlayer(gndIdx,color,headCol,name){
+  const n=GND[gndIdx];
+  return{ wx:n.x,wy:n.y,color,headCol,name,hp:100,
+    facing:gndIdx<5?1:-1, hitFlash:0, dead:false,
+    dvx:0,dvy:0,dangle:0, bobT:Math.random()*100 };
+}
+
+// ── Projectile ──
+let proj=null, trail=[];
+let parts=[], dmgNums=[];
+function spawnParts(wx,wy,col,n,spd){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, s=spd*(0.5+Math.random());
+    parts.push({x:wx,y:wy,vx:Math.cos(a)*s,vy:Math.sin(a)*s-2,
+      life:1,decay:.03+Math.random()*.04,r:3+Math.random()*4,col});
+  }
+}
+function showDmg(wx,wy,n){ dmgNums.push({wx,wy,n,life:1,vy:-2}); }
+
+// ── Turn / Phase (local render state) ──
+// myTurn = true khi Firebase báo turn === myRole
+let myTurn=false;
+let localPhase='idle'; // idle | aiming | flying | waiting
+let currentShotId=0;   // shotId đã xử lý rồi, tránh replay
+
+// ── Input ──
+const MAX_DRAG=100, MAX_SPEED=22;
+let dragOrigin=null, dragCur=null;
+
+const wrap=document.getElementById('gameWrapper');
+function getPos(e){
+  const r=wrap.getBoundingClientRect();
+  const s=e.touches?e.touches[0]:e;
+  return{x:s.clientX-r.left,y:s.clientY-r.top};
+}
+wrap.addEventListener('mousedown', onDown);
+wrap.addEventListener('mousemove', onMove);
+wrap.addEventListener('mouseup',   onUp);
+wrap.addEventListener('touchstart',e=>{e.preventDefault();onDown(e);},{passive:false});
+wrap.addEventListener('touchmove', e=>{e.preventDefault();onMove(e);},{passive:false});
+wrap.addEventListener('touchend',  e=>{e.preventDefault();onUp(e);  },{passive:false});
+
+// myPlayerIndex: 0=p1, 1=p2
+function myIdx(){ return myRole==='p1'?0:1; }
+function oppIdx(){ return myRole==='p1'?1:0; }
+
+function onDown(e){
+  if(localPhase!=='aiming'||!myTurn) return;
+  const sp=getPos(e);
+  const wp=CAM.sw(sp.x,sp.y);
+  const p=players[myIdx()];
+  const hitR=65/CAM.z;
+  if(Math.hypot(wp.x-p.wx,wp.y-(p.wy-45))<hitR){
+    dragOrigin={...sp}; dragCur={...sp};
+  }
+}
+function onMove(e){
+  if(!dragOrigin) return;
+  dragCur=getPos(e);
+  updateStatsUI();
+}
+async function onUp(e){
+  if(!dragOrigin) return;
+  const dx=dragOrigin.x-dragCur.x;
+  const dy=dragOrigin.y-dragCur.y;
+  const mag=Math.hypot(dx,dy);
+  if(mag>6){
+    const ratio=Math.min(mag,MAX_DRAG)/MAX_DRAG;
+    const spd=ratio*MAX_SPEED;
+    const nx=dx/mag,ny=dy/mag;
+    const p=players[myIdx()];
+    p.facing=nx>0?1:-1;
+    const shotData={
+      fromX: p.wx+p.facing*16,
+      fromY: p.wy-54,
+      vx: nx*spd,
+      vy: ny*spd,
+      shotId: Date.now(),
+    };
+    // Ghi shot lên Firebase
+    await update(ref(db,`${DB_ROOT}/${roomId}`),{
+      shot: shotData,
+      shotId: shotData.shotId,
+    });
+    // Tự fire local ngay
+    fireProjectile(shotData);
+    document.getElementById('throwStats').style.display='none';
+  }
+  dragOrigin=null; dragCur=null;
+}
+
+function getDragVec(){
+  if(!dragOrigin||!dragCur) return null;
+  const dx=dragOrigin.x-dragCur.x, dy=dragOrigin.y-dragCur.y;
+  const mag=Math.hypot(dx,dy); if(mag<2) return null;
+  const ratio=Math.min(mag,MAX_DRAG)/MAX_DRAG;
+  return{dx,dy,mag,nx:dx/mag,ny:dy/mag,ratio,
+    force:Math.round(ratio*100),
+    angle:Math.round(Math.atan2(-dy,dx)*180/Math.PI)};
+}
+function updateStatsUI(){
+  const v=getDragVec(); if(!v) return;
+  document.getElementById('tsf').textContent=v.force+'%';
+  document.getElementById('tsa').textContent=v.angle+'°';
+  const p=players[myIdx()];
+  const sp=CAM.ws(p.wx,p.wy-115);
+  const el=document.getElementById('throwStats');
+  el.style.display='block';
+  el.style.left=Math.min(Math.max(sp.x+5,4),CW-135)+'px';
+  el.style.top=Math.max(sp.y,50)+'px';
+}
+
+// ── Fire projectile (dùng cho cả local shot lẫn nhận từ Firebase) ──
+function fireProjectile(s){
+  proj={x:s.fromX,y:s.fromY,vx:s.vx,vy:s.vy,alive:true};
+  trail=[];
+  localPhase='flying';
+  document.getElementById('oppThinking').style.display='none';
+}
+
+// ── Physics ──
+const GRAVITY=0.3;
+function updatePhysics(){
+  if(!proj||!proj.alive) return;
+  trail.push({x:proj.x,y:proj.y});
+  if(trail.length>24) trail.shift();
+  proj.x+=proj.vx; proj.y+=proj.vy; proj.vy+=GRAVITY;
+
+  if(proj.y>=groundY(proj.x)){
+    proj.alive=false;
+    spawnParts(proj.x,groundY(proj.x),'#c8e8f8',8,3);
+    return;
+  }
+  if(proj.x<-50||proj.x>WW+50||proj.y>CH+200){ proj.alive=false; return; }
+
+  // Ai bắn → đạn của ai → đánh ai
+  // Đạn luôn đánh đối thủ của người bắn (tính từ turn hiện tại trên FB)
+  const shooterIdx = myTurn ? myIdx() : oppIdx();
+  const enemy = players[1-shooterIdx];
+  if(!enemy.dead){
+    const dist=Math.hypot(proj.x-enemy.wx,proj.y-(enemy.wy-45));
+    if(dist<32){
+      proj.alive=false;
+      const dmg=18+Math.floor(Math.random()*22);
+      enemy.hp=Math.max(0,enemy.hp-dmg);
+      enemy.hitFlash=1.2;
+      CAM.shake=16;
+      spawnParts(enemy.wx,enemy.wy-50,'#ff4444',16,6);
+      showDmg(enemy.wx,enemy.wy-100,dmg);
+      updateHpUI();
+      if(enemy.hp<=0){
+        enemy.dead=true;
+        enemy.dvx=proj.vx*0.35;
+        enemy.dvy=-6;
+      }
+      // Người gây damage ghi lên Firebase
+      if(myTurn){
+        const ek = shooterIdx===0?'p2':'p1';
+        update(ref(db,`${DB_ROOT}/${roomId}/${ek}`),{hp:enemy.hp});
+        if(enemy.hp<=0){
+          update(ref(db,`${DB_ROOT}/${roomId}`),{
+            phase:'result', winner: myRole
+          });
+        }
+      }
+    }
+  }
+}
+
+function updateHpUI(){
+  // p1=players[0], p2=players[1]
+  document.getElementById('hp1').style.width=players[0].hp/2+'%';
+  document.getElementById('hp2').style.width=players[1].hp/2+'%';
+}
+
+// ── Render ──
+const CLOUDS=[
+  {wx:100,wy:80, w:110,h:44,spd:8},
+  {wx:400,wy:55, w:80, h:32,spd:6},
+  {wx:700,wy:100,w:130,h:50,spd:10},
+  {wx:900,wy:70, w:90, h:36,spd:7},
+];
+let bgT=0;
+
+function render(){
+  ctx.clearRect(0,0,CW,CH);
+  drawSky(); bgT+=0.016;
+  drawBgMountains();
+  for(const cl of CLOUDS){
+    const wx=((cl.wx+bgT*cl.spd)%(WW+200))-100;
+    const sp=CAM.ws(wx,cl.wy);
+    drawCloud(sp.x,sp.y,cl.w,cl.h);
+  }
+  drawTerrain();
+  drawTrailAndProj();
+  for(const p of players) drawPlayer(p);
+  if(localPhase==='aiming'&&myTurn&&dragOrigin&&dragCur) drawAimPreview();
+  drawParticles();
+  drawDmgNums();
+}
+
+function drawSky(){
+  const g=ctx.createLinearGradient(0,0,0,CH);
+  g.addColorStop(0,'#a0cce8'); g.addColorStop(0.55,'#c5e4f5'); g.addColorStop(1,'#ddeeff');
+  ctx.fillStyle=g; ctx.fillRect(0,0,CW,CH);
+}
+function drawBgMountains(){
+  const baseY=CAM.ws(0,GROUND_BASE).y;
+  ctx.fillStyle='rgba(168,208,232,0.72)';
+  const far=[{wx:-50},{wx:120,h:200},{wx:250,h:120},{wx:380,h:230},
+    {wx:510,h:150},{wx:640,h:210},{wx:780,h:130},{wx:900,h:190},{wx:WW+50,h:0}];
+  drawParallaxMountain(far,0.2,baseY,200);
+  ctx.fillStyle='rgba(148,192,220,0.78)';
+  const near=[{wx:-50},{wx:100,h:140},{wx:220,h:80},{wx:340,h:165},
+    {wx:460,h:100},{wx:580,h:150},{wx:710,h:85},{wx:840,h:140},{wx:WW+50,h:0}];
+  drawParallaxMountain(near,0.4,baseY,150);
+}
+function drawParallaxMountain(pts,parallax,baseY,maxH){
+  ctx.beginPath();
+  let first=true;
+  for(const p of pts){
+    const sh=p.h?maxH*(p.h/250):0;
+    const sp=CAM.ws(p.wx+(CAM.cx-WW/2)*parallax,GROUND_BASE-sh);
+    if(first){ctx.moveTo(sp.x,baseY+10);ctx.lineTo(sp.x,sp.y);first=false;}
+    else ctx.lineTo(sp.x,sp.y);
+  }
+  ctx.lineTo(CW+50,baseY+10); ctx.closePath(); ctx.fill();
+}
+function drawCloud(sx,sy,w,h){
+  ctx.save(); ctx.fillStyle='rgba(255,255,255,0.88)';
+  ctx.beginPath();
+  ctx.ellipse(sx,       sy,       w*0.5,h*0.45,0,0,Math.PI*2);
+  ctx.ellipse(sx-w*0.25,sy+h*0.12,w*0.3,h*0.35,0,0,Math.PI*2);
+  ctx.ellipse(sx+w*0.25,sy+h*0.12,w*0.3,h*0.35,0,0,Math.PI*2);
+  ctx.fill(); ctx.restore();
+}
+function drawTerrain(){
+  const pts=GND.map(n=>CAM.ws(n.x,n.y));
+  ctx.beginPath();
+  const first=pts[0];
+  ctx.moveTo(first.x-10,CH+10); ctx.lineTo(first.x,first.y);
+  for(let i=1;i<pts.length;i++){
+    const a=pts[i-1],b=pts[i],mx=(a.x+b.x)/2;
+    ctx.bezierCurveTo(mx,a.y,mx,b.y,b.x,b.y);
+  }
+  const last=pts[pts.length-1];
+  ctx.lineTo(last.x+10,CH+10); ctx.closePath();
+  const groundTop=Math.min(...pts.map(p=>p.y));
+  const tg=ctx.createLinearGradient(0,groundTop,0,CH);
+  tg.addColorStop(0,'#78b878'); tg.addColorStop(0.07,'#559955');
+  tg.addColorStop(0.2,'#3a7a3a'); tg.addColorStop(1,'#1a3a1a');
+  ctx.fillStyle=tg; ctx.fill();
+  ctx.strokeStyle='#9ee09e'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(first.x,first.y);
+  for(let i=1;i<pts.length;i++){
+    const a=pts[i-1],b=pts[i],mx=(a.x+b.x)/2;
+    ctx.bezierCurveTo(mx,a.y,mx,b.y,b.x,b.y);
+  }
+  ctx.stroke();
+  const bg=ctx.createLinearGradient(0,CH-155,0,CH);
+  bg.addColorStop(0,'#1a2a4a'); bg.addColorStop(1,'#0d1520');
+  ctx.fillStyle=bg; ctx.fillRect(0,CH-155,CW,160);
+}
+function drawTrailAndProj(){
+  for(let i=0;i<trail.length;i++){
+    const sp=CAM.ws(trail[i].x,trail[i].y);
+    const a=(i/trail.length)*0.5;
+    ctx.beginPath(); ctx.arc(sp.x,sp.y,2.5*CAM.z,0,Math.PI*2);
+    ctx.fillStyle=`rgba(200,235,255,${a})`; ctx.fill();
+  }
+  if(!proj||!proj.alive) return;
+  const sp=CAM.ws(proj.x,proj.y);
+  const rot=Math.atan2(proj.vy,proj.vx);
+  ctx.save(); ctx.translate(sp.x,sp.y); ctx.rotate(rot);
+  const s=CAM.z;
+  const rg=ctx.createRadialGradient(-3*s,-3*s,1,0,0,9*s);
+  rg.addColorStop(0,'#eef8ff'); rg.addColorStop(0.5,'#c8e8f8'); rg.addColorStop(1,'#88bcd8');
+  ctx.beginPath(); ctx.arc(0,0,9*s,0,Math.PI*2);
+  ctx.fillStyle=rg; ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=1.5*s; ctx.stroke();
+  ctx.restore();
+}
+
+// Ai đang ở lượt bắn (render aiming indicator)
+function shooterIdx(){ return myTurn ? myIdx() : oppIdx(); }
+
+function drawPlayer(p){
+  if(p.dead){
+    const gY=groundY(p.wx);
+    if(p.wy<gY){ p.wy=Math.min(p.wy+p.dvy,gY); p.dvy+=0.4; p.wx+=p.dvx; }
+    p.dangle+=0.05*Math.sign(p.dvx||1);
+  }
+  const sp=CAM.ws(p.wx,p.wy);
+  const s=CAM.z;
+  ctx.save();
+  ctx.translate(sp.x,sp.y);
+  ctx.scale(p.facing*s,s);
+  if(p.dead) ctx.rotate(p.dangle);
+  p.bobT+=0.04;
+  const bob=p.dead?0:Math.sin(p.bobT)*1.5;
+  if(p.hitFlash>0) p.hitFlash-=0.06;
+
+  ctx.save(); ctx.scale(1,0.22);
+  ctx.beginPath(); ctx.ellipse(0,0,22,10,0,0,Math.PI*2);
+  ctx.fillStyle='rgba(0,0,0,0.2)'; ctx.fill(); ctx.restore();
+
+  ctx.fillStyle=p.dead?'#666':'#1e3060';
+  ctx.beginPath(); ctx.roundRect(-11,-30+bob,9,30,4); ctx.fill();
+  ctx.beginPath(); ctx.roundRect( 2,-30+bob,9,30,4); ctx.fill();
+
+  ctx.fillStyle=p.hitFlash>0.3?'#fff':p.color;
+  ctx.beginPath(); ctx.roundRect(-14,-72+bob,28,44,7); ctx.fill();
+
+  // isActive: player đang ở lượt bắn (bất kể máy nào)
+  const pIdx=players.indexOf(p);
+  const isActive=(localPhase==='aiming'||localPhase==='flying')&&pIdx===shooterIdx();
+  ctx.fillStyle=p.headCol;
+  ctx.beginPath();
+  ctx.roundRect(12,-72+bob+(isActive?-18:0),8,26,4); ctx.fill();
+  if(isActive){
+    ctx.save(); ctx.translate(16,-72+bob-18);
+    ctx.beginPath(); ctx.arc(0,0,16,-Math.PI*0.65,Math.PI*0.65);
+    ctx.strokeStyle='#7a5010'; ctx.lineWidth=4; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(0,16);
+    ctx.strokeStyle='rgba(230,230,230,0.9)'; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.restore();
+  }
+  ctx.beginPath(); ctx.ellipse(0,-86+bob,14,14,0,0,Math.PI*2);
+  ctx.fillStyle=p.headCol; ctx.fill();
+  if(!p.dead){
+    ctx.fillStyle='#222';
+    ctx.beginPath(); ctx.arc(6,-88+bob,2.5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(7,-89+bob,1,0,Math.PI*2); ctx.fill();
+  } else {
+    ctx.strokeStyle='#444'; ctx.lineWidth=1.5;
+    [[4,-90],[9,-90]].forEach(([ex,ey])=>{
+      ctx.beginPath(); ctx.moveTo(ex-2,ey-2); ctx.lineTo(ex+2,ey+2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ex+2,ey-2); ctx.lineTo(ex-2,ey+2); ctx.stroke();
+    });
+  }
+  ctx.restore();
+}
+
+function drawAimPreview(){
+  const v=getDragVec(); if(!v) return;
+  const p=players[myIdx()];
+  let wx=p.wx+p.facing*16, wy=p.wy-54;
+  let cvx=v.nx*v.ratio*MAX_SPEED, cvy=v.ny*v.ratio*MAX_SPEED;
+  ctx.save(); ctx.setLineDash([5,8]);
+  ctx.strokeStyle='rgba(255,230,60,0.7)'; ctx.lineWidth=2;
+  ctx.beginPath();
+  const st=CAM.ws(wx,wy); ctx.moveTo(st.x,st.y);
+  for(let i=0;i<80;i++){
+    wx+=cvx; wy+=cvy; cvy+=GRAVITY;
+    if(wy>groundY(wx)+10||wx<-50||wx>WW+50) break;
+    const sp=CAM.ws(wx,wy); ctx.lineTo(sp.x,sp.y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+  const bowSP=CAM.ws(p.wx+p.facing*16,p.wy-54);
+  const col=v.ratio<0.4?'#4dd9ff':v.ratio<0.75?'#ffd60a':'#ff4d6d';
+  ctx.beginPath(); ctx.arc(bowSP.x,bowSP.y,(8+v.ratio*22)*CAM.z,0,Math.PI*2);
+  ctx.strokeStyle=col; ctx.lineWidth=2; ctx.globalAlpha=0.65;
+  ctx.stroke(); ctx.globalAlpha=1; ctx.restore();
+}
+function drawParticles(){
+  for(let i=parts.length-1;i>=0;i--){
+    const p=parts[i];
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.2; p.life-=p.decay;
+    if(p.life<=0){parts.splice(i,1);continue;}
+    const sp=CAM.ws(p.x,p.y);
+    ctx.beginPath(); ctx.arc(sp.x,sp.y,p.r*p.life*CAM.z,0,Math.PI*2);
+    ctx.globalAlpha=p.life; ctx.fillStyle=p.col; ctx.fill(); ctx.globalAlpha=1;
+  }
+}
+function drawDmgNums(){
+  for(let i=dmgNums.length-1;i>=0;i--){
+    const d=dmgNums[i]; d.wy+=d.vy; d.life-=0.025;
+    if(d.life<=0){dmgNums.splice(i,1);continue;}
+    const sp=CAM.ws(d.wx,d.wy);
+    ctx.save(); ctx.globalAlpha=d.life;
+    ctx.font=`900 ${Math.round(22*CAM.z)}px sans-serif`; ctx.textAlign='center';
+    ctx.strokeStyle='rgba(0,0,0,0.6)'; ctx.lineWidth=3;
+    ctx.strokeText('-'+d.n,sp.x,sp.y);
+    ctx.fillStyle='#ff3333'; ctx.fillText('-'+d.n,sp.x,sp.y);
+    ctx.globalAlpha=1; ctx.textAlign='left'; ctx.restore();
+  }
+}
+
+// ── Distance badge ──
+function updateDistBadge(){
+  const el=document.getElementById('distBadge');
+  if(localPhase==='flying'&&proj&&proj.alive){
+    const sIdx=shooterIdx();
+    const enemy=players[1-sIdx];
+    const m=Math.round(Math.hypot(proj.x-enemy.wx,proj.y-(enemy.wy-45))/6);
+    const sp=CAM.ws(enemy.wx+36,enemy.wy-85);
+    el.textContent=m+'m'; el.style.display='block';
+    el.style.left=Math.max(2,Math.min(CW-70,sp.x))+'px';
+    el.style.top=Math.max(50,sp.y)+'px';
+  } else { el.style.display='none'; }
+}
+
+// ── Turn banner ──
+function showTurnBanner(txt){
+  const b=document.getElementById('turnBanner');
+  b.textContent=txt; b.classList.add('show');
+  setTimeout(()=>b.classList.remove('show'),1600);
+}
+
+// ══════════════════════════════════════════
+//  MAIN LOOP
+// ══════════════════════════════════════════
+function loop(){
+  requestAnimationFrame(loop);
+  if(!gameRunning){ if(players.length) render(); return; }
+
+  // Camera control
+  if(localPhase==='aiming'){
+    const sIdx = shooterIdx();
+    CAM.focusShooter(players[sIdx]);
+  } else if(localPhase==='flying'){
+    if(proj&&proj.alive){
+      CAM.focusProj(proj.x,proj.y);
+    } else {
+      // Shot ended
+      CAM.focusBoth();
+      localPhase='waiting';
+      // Người bắn xong → đổi turn trên Firebase
+      if(myTurn){
+        const nextTurn=myRole==='p1'?'p2':'p1';
+        update(ref(db,`${DB_ROOT}/${roomId}`),{ turn: nextTurn });
+      }
+    }
+  }
+
+  CAM.update();
+  updatePhysics();
+  render();
+  updateDistBadge();
+}
+
+// ══════════════════════════════════════════
+//  FIREBASE ROOM LISTENER
+// ══════════════════════════════════════════
+function listenRoom(){
+  onValue(ref(db,`${DB_ROOT}/${roomId}`), snap=>{
+    const d=snap.val(); if(!d||!gameRunning) return;
+
+    // ── Sync HP từ FB (người kia gây damage) ──
+    if(d.p1&&typeof d.p1.hp==='number') players[0].hp=d.p1.hp;
+    if(d.p2&&typeof d.p2.hp==='number') players[1].hp=d.p2.hp;
+    updateHpUI();
+    // Check dead state
+    if(players[0].hp<=0&&!players[0].dead) players[0].dead=true;
+    if(players[1].hp<=0&&!players[1].dead) players[1].dead=true;
+
+    // ── Nhận shot của đối thủ ──
+    const shotId=d.shotId||0;
+    if(!myTurn && d.shot && shotId!==currentShotId && localPhase==='waiting'){
+      currentShotId=shotId;
+      fireProjectile(d.shot);
+    }
+
+    // ── Đổi turn ──
+    const newMyTurn=(d.turn===myRole);
+    if(newMyTurn!==myTurn){
+      myTurn=newMyTurn;
+      if(myTurn){
+        localPhase='aiming';
+        showTurnBanner('🎯 Lượt của bạn!');
+        document.getElementById('oppThinking').style.display='none';
+      } else {
+        localPhase='waiting';
+        showTurnBanner('⏳ Lượt đối thủ');
+        document.getElementById('oppThinking').style.display='block';
+      }
+    }
+
+    // ── Result ──
+    if(d.phase==='result'&&d.winner){
+      gameRunning=false;
+      const iWin=d.winner===myRole;
+      document.getElementById('goTitle').textContent   = iWin?'🏆 THẮNG!':'😢 THUA!';
+      document.getElementById('goTitle').style.color   = iWin?'#ffd23f':'#ff6b6b';
+      document.getElementById('goSub').textContent     = iWin?'Bạn đã chiến thắng! 🎉':'Đối thủ thắng. Cố lên!';
+      const go=document.getElementById('gameOverlay');
+      go.style.display='flex';
+      document.getElementById('goBtn').onclick=()=>location.reload();
+    }
+  });
+}
+
+// ══════════════════════════════════════════
+//  START GAME
+// ══════════════════════════════════════════
+function startGame(){
+  // p1 ở trái (gndIdx=1), p2 ở phải (gndIdx=7)
+  players=[
+    makePlayer(1,'#e05252','#f9c8a0','P1'),
+    makePlayer(7,'#3a8acc','#d0eeff','P2'),
+  ];
+  parts=[]; dmgNums=[]; trail=[]; proj=null;
+  localPhase='waiting';
+  myTurn=false; currentShotId=0;
+  CAM.cx=WW/2; CAM.cy=GROUND_BASE-200;
+  CAM.tcx=WW/2;CAM.tcy=GROUND_BASE-200;
+  CAM.z=0.5;CAM.tz=0.5;CAM.shake=0;CAM.lerpSpeed=0.1;
+  updateHpUI();
+
+  document.getElementById('lobbyOverlay').style.display='none';
+  document.getElementById('gameOverlay').style.display='none';
+  gameRunning=true;
+
+  listenRoom();
+
+  // p1 đi trước — set Firebase
+  if(myRole==='p1'){
+    update(ref(db,`${DB_ROOT}/${roomId}`),{
+      turn:'p1',
+      p1:{hp:100},
+      p2:{hp:100},
+      shotId:0,
+    });
+  }
+
+  // Init turn state sau khi listener attach
+  setTimeout(()=>{
+    myTurn=(myRole==='p1');
+    if(myTurn){
+      localPhase='aiming';
+      CAM.focusShooter(players[0]);
+      showTurnBanner('🎯 Lượt của bạn!');
+    } else {
+      document.getElementById('oppThinking').style.display='block';
+      showTurnBanner('⏳ Lượt đối thủ');
+      CAM.focusBoth();
+    }
+  },400);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
